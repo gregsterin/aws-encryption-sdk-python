@@ -6,6 +6,7 @@ import boto3
 import botocore.client
 from botocore.exceptions import ClientError
 import botocore.session
+import dogpile.cache
 
 from aws_encryption_sdk.exceptions import GenerateKeyError, DecryptKeyError, EncryptKeyError, UnknownRegionError
 from aws_encryption_sdk.identifiers import __version__
@@ -40,6 +41,16 @@ class KMSMasterKeyProviderConfig(MasterKeyProviderConfig):
     region_names = attr.ib(
         default=attr.Factory(list),
         validator=attr.validators.instance_of(list)
+    )
+
+    cache_kms_client_responses = attr.ib(
+        default=False,
+        validator=attr.validators.instance_of(bool)
+    )
+
+    kms_client_response_cache_ttl = attr.ib(
+        default=60,
+        validator=attr.validators.instance_of(int)
     )
 
 
@@ -77,6 +88,9 @@ class KMSMasterKeyProvider(MasterKeyProvider):
     def __init__(self, **kwargs):
         self._regional_clients = {}
         self._process_config()
+        self._client_response_cache = dogpile.cache.make_region().configure(
+            'dogpile.cache.memory',
+            expiration_time=self.config.kms_client_response_cache_ttl)
 
     def _process_config(self):
         """Traverses the config and adds master keys and regional clients as needed."""
@@ -96,10 +110,18 @@ class KMSMasterKeyProvider(MasterKeyProvider):
         :param str region_name: AWS Region ID (ex: us-east-1)
         """
         if region_name not in self._regional_clients:
-            self._regional_clients[region_name] = boto3.session.Session(
+            client = boto3.session.Session(
                 region_name=region_name,
                 botocore_session=self.config.botocore_session
             ).client('kms')
+
+            if self.config.cache_kms_client_responses:
+                # Wrap relevant encrypt/decrypt operations with responce caching.
+                client.generate_data_key = self._client_response_cache.cache_on_arguments()(client.generate_data_key)
+                client.encrypt = self._client_response_cache.cache_on_arguments()(client.encrypt)
+                client.decrypt = self._client_response_cache.cache_on_arguments()(client.decrypt)
+
+            self._regional_clients[region_name] = client
 
     def add_regional_clients_from_list(self, region_names):
         """Adds multiple regional clients for the specified regions if they do not already exist.
