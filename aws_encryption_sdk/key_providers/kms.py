@@ -7,6 +7,7 @@ import botocore.client
 from botocore.exceptions import ClientError
 import botocore.session
 import dogpile.cache
+import dogpile.cache.util
 
 from aws_encryption_sdk.exceptions import GenerateKeyError, DecryptKeyError, EncryptKeyError, UnknownRegionError
 from aws_encryption_sdk.identifiers import __version__
@@ -91,7 +92,9 @@ class KMSMasterKeyProvider(MasterKeyProvider):
 
     def _process_config(self):
         """Traverses the config and adds master keys and regional clients as needed."""
-        self._client_response_cache = dogpile.cache.make_region().configure(
+        self._client_response_cache = dogpile.cache.make_region(
+            function_key_generator=dogpile.cache.util.kwarg_function_key_generator
+        ).configure(
             'dogpile.cache.memory',
             expiration_time=self.config.kms_client_response_cache_ttl)
         if self.config.key_ids:
