@@ -88,12 +88,12 @@ class KMSMasterKeyProvider(MasterKeyProvider):
     def __init__(self, **kwargs):
         self._regional_clients = {}
         self._process_config()
-        self._client_response_cache = dogpile.cache.make_region().configure(
-            'dogpile.cache.memory',
-            expiration_time=self.config.kms_client_response_cache_ttl)
 
     def _process_config(self):
         """Traverses the config and adds master keys and regional clients as needed."""
+        self._client_response_cache = dogpile.cache.make_region().configure(
+            'dogpile.cache.memory',
+            expiration_time=self.config.kms_client_response_cache_ttl)
         if self.config.key_ids:
             self.add_master_keys_from_list(self.config.key_ids)
         if self.config.region_names:
