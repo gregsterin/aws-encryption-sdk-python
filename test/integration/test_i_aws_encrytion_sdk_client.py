@@ -74,12 +74,15 @@ def setup_botocore_session(config):
     return botocore_session
 
 
-def setup_kms_master_key_provider():
+def setup_kms_master_key_provider(provider_kwargs=None):
     """Reads the test_values config file and builds the requested KMS Master Key Provider."""
     config = read_test_config()
     cmk_arn = get_cmk_arn(config)
     botocore_session = setup_botocore_session(config)
-    kms_master_key_provider = KMSMasterKeyProvider(botocore_session=botocore_session)
+    kwargs = dict(botocore_session=botocore_session)
+    if provider_kwargs:
+        kwargs.update(provider_kwargs)
+    kms_master_key_provider = KMSMasterKeyProvider(**kwargs)
     kms_master_key_provider.add_master_key(cmk_arn)
     return kms_master_key_provider
 
@@ -527,3 +530,12 @@ class TestKMSThickClientIntegration(unittest.TestCase):
             key_provider=self.kms_master_key_provider
         )
         assert plaintext == VALUES['plaintext_128']
+
+
+class TestKMSThickClientWithCacheIntegration(TestKMSThickClientIntegration):
+    def setUp(self):
+        if skip_tests():
+            self.skipTest(SKIP_MESSAGE)
+        self.kms_master_key_provider = setup_kms_master_key_provider(provider_kwargs={
+            'cache_kms_client_responses': True
+        })
